@@ -1,20 +1,20 @@
 # Upstream findings
 
-이 플랫폼을 LiteLLM `v1.102.0` componentized 차트로 구축하면서 발견한 문제들입니다. 전부 kind 클러스터에서 재현했고, 재현 명령과 관찰 결과를 함께 적었습니다. 각 항목에는 기존 이슈/PR 여부와 기여 방식을 달아 두었습니다.
+이 플랫폼을 LiteLLM `v1.102.0` componentized 차트로 구축하면서 발견한 문제들입니다. 전부 kind 클러스터에서 재현했고, 재현 명령과 관찰 결과를 함께 적었습니다. 각 항목에는 기존 이슈/PR 여부와 기여 방식을 달아 두었습니다. 상태는 2026-09-22에 upstream main(`25af172b85`)에서 다시 확인한 기준이고, 이 저장소의 추적 이슈는 [Phase 1 · Upstream 기여](https://github.com/RosieOh/RoundHouse/milestone/2) 마일스톤에 모아 두었습니다.
 
 기여하기 전에 [LiteLLM CONTRIBUTING.md](https://github.com/BerriAI/litellm/blob/main/CONTRIBUTING.md)와 `AGENTS.md`를 확인하세요. CLA 서명, `tests/test_litellm/` 테스트, 실제 proxy에 curl한 결과를 수정 증거로 붙이는 규칙이 있습니다. 차트 변경은 `LITELLM_CHART_DIR=../litellm/helm/litellm make deploy`로 이 스택에서 먼저 검증할 수 있습니다.
 
-| # | 영역 | 요약 | 상태 | 기여 방식 |
-|---|---|---|---|---|
-| 1 | chart | componentized 차트가 레지스트리에 없고, 기본 이미지 태그 `0.1.0`이 존재하지 않음 | 신규 | 이슈 + PR |
-| 2 | chart | Traefik 뒤에서 `/`가 backend로 가고 RSC `*.txt`가 404 | 신규 | 이슈 + PR |
-| 3 | ui | `/ui/**/*.txt` RSC 페이로드 404 | #41899, PR #41925 | PR 라이브 검증 리뷰 |
-| 4 | triage | #29966 "componentized 이미지 없음"은 v1.88.6부터 해결됨 | #29966 | 이슈 코멘트 |
-| 5 | router | 단일 deployment 그룹은 fallback 전에 백오프 재시도, docstring과 불일치 | 신규 | 이슈(동작 확인 후 PR) |
-| 6 | metrics | `litellm_deployment_state`가 last-write-wins라 알림에 쓸 수 없음 | 신규 | 문서 PR 또는 이슈 |
-| 7 | metrics | 요청 카운터 기본 라벨의 카디널리티 | 신규 | 문서/차트 PR |
-| 8 | chart | `LITELLM_SALT_KEY`를 차트 값으로 받을 수 없음 | 신규 | PR |
-| 9 | valkey-helm | exporter 사이드카에 securityContext가 없어 restricted PSS에서 거부됨 | valkey-io/valkey-helm | 외부 PR |
+| # | 영역 | 요약 | 상태 | 기여 방식 | 추적 |
+|---|---|---|---|---|---|
+| 1 | chart | componentized 차트가 레지스트리에 없고, 기본 이미지 태그 `0.1.0`이 존재하지 않음 | 신규. 차트 배포 워크플로는 `3f6c0090c0`에서 삭제됨 | 이슈 + 릴리스 워크플로 PR | [#23](https://github.com/RosieOh/RoundHouse/issues/23) |
+| 2 | chart | Traefik 뒤에서 `/`가 backend로 가고 RSC `*.txt`가 404 | 신규. 차트 테스트가 `ingress.controller: traefik`을 거부함. 레거시 차트 대상 HTTPRoute PR #41193 | 이슈 + PR | [#24](https://github.com/RosieOh/RoundHouse/issues/24) |
+| 3 | ui | `/ui/**/*.txt` RSC 페이로드 404 | #41899, PR #41925 | PR 라이브 검증 리뷰(검증 완료) | [#21](https://github.com/RosieOh/RoundHouse/issues/21) |
+| 4 | triage | #29966 "componentized 이미지 없음"은 v1.88.6부터 해결됨 | #29966 | 이슈 코멘트 | [#22](https://github.com/RosieOh/RoundHouse/issues/22) |
+| 5 | router | 단일 deployment 그룹은 fallback 전에 백오프 재시도, docstring과 불일치 | #40405(같은 증상), **수정 PR [#42450](https://github.com/BerriAI/litellm/pull/42450) 제출** | PR | [#20](https://github.com/RosieOh/RoundHouse/issues/20) |
+| 6 | metrics | `litellm_deployment_state`가 last-write-wins라 알림에 쓸 수 없음 | #35653과 일부 겹침(라벨 불일치) | #35653에 근거 코멘트 | [#26](https://github.com/RosieOh/RoundHouse/issues/26) |
+| 7 | metrics | 요청 카운터 기본 라벨의 카디널리티. v1.102.0부터 `prometheus_exclude_labels`로 제한 가능 | #30532, PR #34201(머지) | 차트/배포 문서 예시 | [#36](https://github.com/RosieOh/RoundHouse/issues/36) |
+| 8 | chart | `LITELLM_SALT_KEY`를 차트 값으로 받을 수 없음 | 신규. salt 교체 PR #37698은 helm을 건드리지 않음 | PR | [#25](https://github.com/RosieOh/RoundHouse/issues/25) |
+| 9 | valkey-helm | exporter 사이드카에 securityContext가 없어 restricted PSS에서 거부됨 | valkey-io/valkey-helm, 관련 이슈와 PR 없음 | 외부 PR | [#27](https://github.com/RosieOh/RoundHouse/issues/27) |
 
 ---
 
@@ -80,9 +80,16 @@ $ curl -sI localhost:8080/models-and-endpoints/index.txt | grep -i server -> uvi
 
 이 저장소는 `retry_policy`로 5xx 재시도를 끄는 것으로 우회했습니다(표의 마지막 줄). 다만 이 방법은 일시적인 5xx에서도 재시도 기회를 버리고 바로 fallback 모델의 비용과 품질을 받아들이는 절충입니다
 
-**제안**: 호출에 fallback이 설정돼 있으면 백오프 없이(또는 재시도 없이) fallback으로 넘어가게 하거나, 의도한 동작이라면 docstring을 고치고 `retry_policy` 사용을 문서화합니다. 어느 쪽이 의도인지 먼저 이슈로 메인테이너에게 확인하는 게 좋습니다
+**진행 (2026-09-22)**: 같은 증상이 #40405로 이미 보고돼 있어서, 새 이슈 대신 그 이슈에 재현 결과를 코멘트로 남기고 수정 PR [#42450](https://github.com/BerriAI/litellm/pull/42450)을 보냈습니다. 이력을 보면 2024-05-11 `3e6097d9f8`에서 fallback이 있으면 즉시 재시도하는 코드가 들어갔다가, 한 시간 뒤 `4d648a6d89`에서 빠졌습니다. 당시 코드는 라우터 전체 fallback 목록만 확인했습니다. 그래서 PR은 이 요청에서 실제로 쓸 수 있는 fallback이 있을 때만 대기를 건너뛰도록 범위를 좁혔고, fallback dispatcher와 같은 판정 로직을 재사용합니다
 
-**이슈 제목 초안**: `[Bug]: router backs off before retrying a single-deployment group even when fallbacks are configured, adding seconds of latency during a provider outage`
+PR 증거는 기본 모델을 항상 500을 반환하는 로컬 서버로, fallback을 실제 OpenAI `gpt-5.4-mini`로 두고 요청 10건씩 측정했습니다
+
+| | 응답 시간 | 중앙값 | 장애 provider가 받은 시도 |
+|---|---|---|---|
+| 수정 전(`25af172b85`) | 4.85~6.21초 | 5.48초 | 30회 |
+| 수정 후 | 0.57~1.50초 | 0.73초 | 30회 |
+
+재시도 횟수는 그대로이고 대기만 사라집니다. 장애 난 provider에 가는 요청 자체를 줄이려면 여전히 `allowed_fails`와 `cooldown_time`이 필요합니다. 재시도 루프가 마지막 재시도가 실패한 뒤에도 백오프만큼 잠드는 문제는 [#30](https://github.com/RosieOh/RoundHouse/issues/30)에서 따로 추적합니다
 
 ## 6. metrics: `litellm_deployment_state` is last-write-wins
 
@@ -90,11 +97,18 @@ $ curl -sI localhost:8080/models-and-endpoints/index.txt | grep -i server -> uvi
 
 **제안**: 문서에 이 의미를 명시하고 알림에는 실패율을 쓰라고 안내하거나, 윈도 기반의 health 메트릭을 추가합니다
 
+**관련**: #35653(PR #35654)이 같은 메트릭의 라벨 불일치를 다룹니다. last-write-wins 문제와는 다르지만 같은 메트릭이라, 이 측정 결과를 그 이슈의 근거로 붙입니다
+
 ## 7. metrics: default label cardinality on request counters
 
-`litellm_proxy_total_requests_metric_total`에는 기본으로 `client_ip`, `user_agent`, `hashed_api_key`, `api_key_alias`, `user`, `user_email`, `end_user` 라벨이 붙습니다. Kubernetes에서는 `client_ip`가 파드나 노드 IP라서 스케일링할 때마다 바뀌고, 키와 사용자 수만큼 시계열이 곱해집니다. `litellm_settings.prometheus_metrics_config`로 메트릭과 라벨을 allowlist로 제한할 수 있지만, 이 설정은 적은 메트릭만 내보내는 방식이라 필요한 메트릭을 전부 나열해야 합니다
+`litellm_proxy_total_requests_metric_total`에는 기본으로 `client_ip`, `user_agent`, `hashed_api_key`, `api_key_alias`, `user`, `user_email`, `end_user` 라벨이 붙습니다. Kubernetes에서는 `client_ip`가 파드나 노드 IP라서 스케일링할 때마다 바뀌고, 키와 사용자 수만큼 시계열이 곱해집니다. 처음에는 `litellm_settings.prometheus_metrics_config`의 allowlist밖에 없다고 적었는데, 틀렸습니다. v1.102.0에는 PR #34201(2026-08-01 머지)로 `prometheus_exclude_labels`와 `prometheus_exclude_metrics`가 들어와 있어서, 필요 없는 라벨만 전역으로 뺄 수 있습니다. 같은 요청이 #30532로 열려 있습니다
 
-**제안**: Helm 차트나 Kubernetes 배포 문서에 카디널리티를 제한한 `prometheus_metrics_config` 예시를 넣습니다
+```yaml
+litellm_settings:
+  prometheus_exclude_labels: ["client_ip", "user_agent"]
+```
+
+**제안**: Helm 차트나 Kubernetes 배포 문서에 `prometheus_exclude_labels` 예시를 넣습니다. 이 저장소에 적용하고 시계열 수를 전후로 재는 일은 [#36](https://github.com/RosieOh/RoundHouse/issues/36)에서 합니다
 
 ## 8. chart: no first-class salt key value
 
@@ -107,6 +121,14 @@ $ curl -sI localhost:8080/models-and-endpoints/index.txt | grep -i server -> uvi
 Valkey 공식 차트 `0.12.0`의 `metrics.exporter.securityContext` 기본값이 `{}`입니다. 네임스페이스에 `pod-security.kubernetes.io/enforce=restricted`가 걸려 있으면 Valkey 파드가 거부됩니다. Valkey 컨테이너 자체는 차트가 이미 강화해 두었습니다. 이 저장소는 `values/valkey.yaml`에서 명시적으로 지정했습니다
 
 **기여 방식**: [valkey-io/valkey-helm](https://github.com/valkey-io/valkey-helm)에 Valkey 컨테이너와 같은 기본값을 exporter에도 넣는 PR을 보냅니다
+
+## 10. 추가 후보 (2026-09-22 조사)
+
+플랫폼에서 재현하고 측정할 수 있는 upstream 이슈 중 아직 수정 PR이 없는 것들입니다.
+
+- **#26672 멀티 파드 예산 우회**: 공유 Redis를 쓰는 멀티 파드 배포에서 예산 한도가 우회된다는 보고입니다. LiteLLM 직원이 재현에 실패해서 재현 스크립트를 요청해 둔 상태입니다. 핵심 원인 하나는 PR #33565로 v1.102.0에 들어갔지만, 이후 다시 확인한 사람이 없습니다. [#28](https://github.com/RosieOh/RoundHouse/issues/28)
+- **#33021 componentized DB 풀 한도**: componentized 진입점(`gateway/main.py`, `backend/main.py`)은 `proxy_cli.py`를 거치지 않아서 `database_connection_pool_limit`이 적용되지 않습니다. [#29](https://github.com/RosieOh/RoundHouse/issues/29)
+- **재시도 루프의 마지막 대기**: 마지막 재시도가 실패한 뒤에도 백오프만큼 잠든 다음 에러를 올립니다. [#30](https://github.com/RosieOh/RoundHouse/issues/30)
 
 ---
 

@@ -131,7 +131,7 @@ make chaos-off             # helmfile로 선언된 상태로 되돌림
 | 비스트리밍 p95 | 606ms | **6.57s** | **996ms** |
 | 알림 | 없음 | `ServingFromFallbacks`, `DeploymentDegraded` | 동일 |
 
-처음 설정에서는 가용성은 지켰지만 지연이 10배로 늘었습니다. deployment가 하나뿐인 모델 그룹에서는 라우터가 fallback 전에 같은 provider에 지수 백오프를 두고 재시도하기 때문입니다([finding 5](docs/upstream-findings.md#5-router-single-deployment-groups-back-off-before-falling-back)). `router_settings.retry_policy`로 5xx는 재시도 없이 바로 fallback하게 바꾸자 p95가 996ms로 돌아왔습니다. 이 방법은 일시적인 5xx에서도 바로 fallback 모델로 넘어가는 절충입니다. 모델 그룹마다 deployment를 둘 이상(리전이나 provider를 달리해서) 두면 라우터가 다른 deployment로 백오프 없이 재시도하고 cooldown도 동작합니다.
+처음 설정에서는 가용성은 지켰지만 지연이 10배로 늘었습니다. deployment가 하나뿐인 모델 그룹에서는 라우터가 fallback 전에 같은 provider에 지수 백오프를 두고 재시도하기 때문입니다([finding 5](docs/upstream-findings.md#5-router-single-deployment-groups-back-off-before-falling-back)). `router_settings.retry_policy`로 5xx는 재시도 없이 바로 fallback하게 바꾸자 p95가 996ms로 돌아왔습니다. 이 방법은 일시적인 5xx에서도 바로 fallback 모델로 넘어가는 절충입니다. 모델 그룹마다 deployment를 둘 이상(리전이나 provider를 달리해서) 두면 라우터가 다른 deployment로 백오프 없이 재시도하고 cooldown도 동작합니다. 라우터 자체의 수정은 upstream에 PR([BerriAI/litellm#42450](https://github.com/BerriAI/litellm/pull/42450))로 보냈습니다.
 
 알림은 Prometheus에서 firing된 뒤 Alertmanager까지 도달하는 것까지 확인했습니다(로컬 receiver는 `null`).
 
@@ -243,16 +243,26 @@ make publish-charts       차트를 GHCR OCI 패키지로 게시
 - **데이터 계층**: CNPG에 object storage 백업(`barmanObjectStore`)과 PITR를 켜거나 RDS/Cloud SQL을 씁니다. Valkey는 복제본이 있는 매니지드 서비스로 바꿉니다
 - **Secret**: bootstrap 스크립트 대신 External Secrets Operator나 Vault를 씁니다
 - **토폴로지**: 멀티 AZ 노드 풀, `topologySpreadConstraints`를 zone 기준으로, `pdb.minAvailable`
-- **메트릭 카디널리티**: LiteLLM은 요청 카운터에 `client_ip`, `user_agent`, `hashed_api_key`를 기본으로 붙입니다. 키와 사용자가 많아지면 `litellm_settings.prometheus_metrics_config`로 메트릭과 라벨을 allowlist로 제한하세요
+- **메트릭 카디널리티**: LiteLLM은 요청 카운터에 `client_ip`, `user_agent`, `hashed_api_key`를 기본으로 붙입니다. 키와 사용자가 많아지면 `litellm_settings.prometheus_exclude_labels`(v1.102.0부터)로 필요 없는 라벨을 빼세요
 - **알림 라우팅**: Alertmanager receiver(Slack, PagerDuty)를 연결하고 severity로 분기합니다
 - **Ingress**: TLS, 그리고 `/metrics` 같은 내부 경로 차단
 
+## Upstream 기여
+
+이 플랫폼에서 측정한 문제를 upstream에 근거와 함께 기여합니다. 재현 방법은 [docs/upstream-findings.md](docs/upstream-findings.md)에, 진행 상황은 [Phase 1 · Upstream 기여](https://github.com/RosieOh/RoundHouse/milestone/2) 마일스톤에 있습니다.
+
+| 기여 | 결과 | 상태 |
+|---|---|---|
+| LiteLLM 라우터: 단일 deployment 그룹이 fallback 전에 재시도 백오프를 기다림 | provider 장애 시 fallback 응답 중앙값 5.48초 → 0.73초 | PR [#42450](https://github.com/BerriAI/litellm/pull/42450) 리뷰 대기 |
+
 ## 로드맵
 
-- [ ] ArgoCD app-of-apps로 GitOps 전환(차트 migration hook을 `argocd.enabled`로)
-- [ ] OpenTelemetry Collector + Tempo로 요청 트레이싱, Loki로 로그
-- [ ] `prometheus_metrics_config`로 카디널리티 제한한 프로파일
-- [ ] 모델 그룹당 deployment 2개 구성(백오프 없는 재시도와 cooldown)과 비교
-- [ ] CI: `make validate` + kind 기반 e2e(GitHub Actions)
-- [ ] Terraform EKS 모듈과 prod 환경
-- [ ] Gateway API(HTTPRoute) 지원
+- [x] 차트를 GHCR OCI 패키지로 게시 [#32](https://github.com/RosieOh/RoundHouse/issues/32)
+- [ ] ArgoCD app-of-apps로 GitOps 전환(차트 migration hook을 `argocd.enabled`로) [#33](https://github.com/RosieOh/RoundHouse/issues/33)
+- [ ] CI: `make validate` + kind 기반 e2e(GitHub Actions) [#34](https://github.com/RosieOh/RoundHouse/issues/34)
+- [ ] OpenTelemetry Collector + Tempo로 요청 트레이싱, Loki로 로그 [#35](https://github.com/RosieOh/RoundHouse/issues/35)
+- [ ] `prometheus_exclude_labels`로 카디널리티를 제한한 프로파일 [#36](https://github.com/RosieOh/RoundHouse/issues/36)
+- [ ] 모델 그룹당 deployment 2개 구성(백오프 없는 재시도와 cooldown)과 비교 [#37](https://github.com/RosieOh/RoundHouse/issues/37)
+- [ ] Terraform EKS 모듈과 prod 환경 [#38](https://github.com/RosieOh/RoundHouse/issues/38)
+- [ ] Gateway API(HTTPRoute) 지원 [#39](https://github.com/RosieOh/RoundHouse/issues/39)
+- [ ] 공유 클러스터용 External Secrets Operator [#40](https://github.com/RosieOh/RoundHouse/issues/40)
