@@ -1,0 +1,5 @@
+entryPoints:
+  - web
+ui:
+  service: litellm-ui
+  port: 3000

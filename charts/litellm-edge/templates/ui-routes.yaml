@@ -1,0 +1,27 @@
+# Two gaps between the chart's Ingress and Traefik, both confirmed with curl
+# against a live cluster:
+#
+# 1. Traefik orders routers by rule length, so the chart's catch-all
+#    `PathPrefix(/)` -> backend outranks its `Path(/)` -> ui and `/` lands on
+#    the backend. ALB and ingress-nginx order by specificity instead.
+# 2. The Next.js export fetches RSC payloads as `<route>.txt` (mostly nested,
+#    e.g. /models-and-endpoints/index.txt). The chart only routes them for
+#    `controller: alb`, via an ALB wildcard Traefik's Ingress provider has no
+#    equivalent for, so they fall through to the backend and 404.
+#
+# The explicit priority puts both rules ahead of the chart's routers, which
+# matches the ALB rendering where the `/*.txt` rule precedes the API prefixes.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .Release.Name }}-ui
+spec:
+  entryPoints:
+    {{- toYaml .Values.entryPoints | nindent 4 }}
+  routes:
+    - kind: Rule
+      match: Path(`/`) || PathRegexp(`\.txt$`)
+      priority: 1000
+      services:
+        - name: {{ .Values.ui.service }}
+          port: {{ .Values.ui.port }}

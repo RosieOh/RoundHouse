@@ -1,0 +1,34 @@
+# ingress-nginx was retired in March 2026, so the local edge is Traefik. It
+# serves the standard Ingress API the LiteLLM chart renders; see
+# charts/litellm-edge for the two routes Traefik needs on top of it.
+deployment:
+  replicas: 1
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+service:
+  spec:
+    type: NodePort
+ports:
+  web:
+    nodePort: 30080
+  websecure:
+    expose:
+      default: false
+nodeSelector:
+  ingress-ready: "true"
+metrics:
+  prometheus:
+    # The chart probes the cluster for the Prometheus Operator API, which
+    # fails in offline renders (`helmfile template`, Argo CD). The CRDs come
+    # from kube-prometheus-stack, which this release `needs`.
+    disableAPICheck: true
+    serviceMonitor:
+      enabled: true
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
