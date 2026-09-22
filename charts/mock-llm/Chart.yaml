@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mock-llm
+description: OpenAI-compatible mock providers with latency and fault injection, for exercising routing, fallbacks and alerts without spending on real LLM APIs
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

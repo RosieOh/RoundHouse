@@ -1,0 +1,33 @@
+image:
+  repository: docker.io/library/python
+  tag: 3.14-alpine
+  pullPolicy: IfNotPresent
+
+# Shared by every provider pod. Placeholder only: the mock accepts any key when
+# this is empty, and the gateway sends it as a plain api_key.
+apiKey: ""
+
+# One Deployment + Service per entry. `env` maps straight onto the MOCK_* knobs
+# documented in files/server.py.
+providers:
+  - name: mock-openai
+    env:
+      MOCK_LATENCY_MS: "300"
+      MOCK_JITTER_MS: "100"
+      MOCK_OUTPUT_TOKENS: "64"
+      MOCK_ERROR_RATE: "0"
+      MOCK_ERROR_STATUS: "500"
+  - name: mock-anthropic
+    env:
+      MOCK_LATENCY_MS: "500"
+      MOCK_JITTER_MS: "150"
+      MOCK_OUTPUT_TOKENS: "96"
+      MOCK_ERROR_RATE: "0"
+      MOCK_ERROR_STATUS: "529"
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

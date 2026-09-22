@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-server
+  labels:
+    app.kubernetes.io/name: mock-llm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  server.py: |
+{{ .Files.Get "files/server.py" | indent 4 }}
