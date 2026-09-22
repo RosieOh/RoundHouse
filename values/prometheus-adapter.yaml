@@ -1,0 +1,31 @@
+# Serves the two per-pod metrics the LiteLLM chart's HPA asks for
+# (gateway.hpa.targetRequestsPerSecond / targetTokensPerSecond) on
+# custom.metrics.k8s.io. Resource metrics stay with metrics-server.
+prometheus:
+  url: http://prometheus-operated.monitoring.svc
+  port: 9090
+rules:
+  default: false
+  custom:
+    - seriesQuery: 'litellm_proxy_total_requests_metric_total{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: { resource: namespace }
+          pod: { resource: pod }
+      name:
+        as: litellm_requests_per_second
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[1m])) by (<<.GroupBy>>)'
+    - seriesQuery: 'litellm_total_tokens_metric_total{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: { resource: namespace }
+          pod: { resource: pod }
+      name:
+        as: litellm_tokens_per_second
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[1m])) by (<<.GroupBy>>)'
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

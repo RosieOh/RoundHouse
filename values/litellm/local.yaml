@@ -1,0 +1,43 @@
+# Sized to fit the whole platform in Docker Desktop's default ~8 GiB. The
+# chart defaults (1 CPU / 4 GiB per gateway and backend pod) are the right
+# starting point for real traffic.
+gateway:
+  numWorkers: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1536Mi
+  metricsServer:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 96Mi
+      limits:
+        memory: 256Mi
+  hpa:
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+    # Low on purpose so `make load` visibly scales the gateway out.
+    targetRequestsPerSecond: "4"
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 60
+
+backend:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1536Mi
+
+ui:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      memory: 64Mi

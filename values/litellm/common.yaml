@@ -1,0 +1,229 @@
+# Platform opinions for the componentized LiteLLM chart (helm/litellm in the
+# upstream repo). Image tags are injected by helmfile from
+# environments/*.yaml so the chart, the images and the migration job always
+# move together. Sizing lives in the per-environment file next to this one.
+fullnameOverride: litellm
+
+masterKey:
+  secretName: litellm-master-key
+  secretKey: master-key
+
+# CNPG owns the credentials: `litellm-pg-app` carries username/password for the
+# database owner. `-rw` always points at the primary, `-ro` at replicas only,
+# which turns on the proxy's read-replica routing for find/count/group_by.
+database:
+  writer:
+    host: litellm-pg-rw
+    port: 5432
+    dbname: litellm
+    passwordSecret:
+      name: litellm-pg-app
+      usernameKey: username
+      passwordKey: password
+  reader:
+    host: litellm-pg-ro
+    port: 5432
+    dbname: litellm
+    passwordSecret:
+      name: litellm-pg-app
+      usernameKey: username
+      passwordKey: password
+  # In-pod PgBouncer: the pod holds at most maxDbConnections upstream
+  # connections no matter how many uvicorn workers or replicas the HPA adds.
+  connectionPool:
+    enabled: true
+    maxDbConnections: 10
+    maxClientConn: 200
+
+redis:
+  host: valkey
+  port: 6379
+  passwordSecret:
+    name: valkey-users
+    passwordKey: password
+
+migrationJob:
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+# The chart has no Traefik mode yet. Traefik accepts dots in Exact/Prefix
+# paths, which is the `alb` rendering, so that is the closest fit; the RSC
+# `*.txt` route and the `/` precedence fix live in charts/litellm-edge.
+ingress:
+  enabled: true
+  className: traefik
+  controller: alb
+
+gateway:
+  logLevel: INFO
+  envSecrets:
+    - litellm-env
+  config:
+    create: true
+    proxy_config:
+      # Git is the source of truth for models (store_model_in_db stays off),
+      # so a model change is a reviewed PR and an auditable rollout.
+      model_list:
+        - model_name: gpt-mock
+          litellm_params:
+            model: openai/mock-gpt
+            api_base: http://mock-openai.llm-mocks.svc.cluster.local:8080/v1
+            api_key: sk-mock-not-a-secret
+            timeout: 30
+            stream_timeout: 60
+          model_info:
+            id: mock-openai-1
+            input_cost_per_token: 0.0000025
+            output_cost_per_token: 0.00001
+        - model_name: claude-mock
+          litellm_params:
+            model: openai/mock-claude
+            api_base: http://mock-anthropic.llm-mocks.svc.cluster.local:8080/v1
+            api_key: sk-mock-not-a-secret
+            timeout: 30
+            stream_timeout: 60
+          model_info:
+            id: mock-anthropic-1
+            input_cost_per_token: 0.000003
+            output_cost_per_token: 0.000015
+        - model_name: embed-mock
+          litellm_params:
+            model: openai/mock-embed
+            api_base: http://mock-openai.llm-mocks.svc.cluster.local:8080/v1
+            api_key: sk-mock-not-a-secret
+          model_info:
+            id: mock-openai-embed-1
+            mode: embedding
+            input_cost_per_token: 0.00000002
+            output_cost_per_token: 0
+      router_settings:
+        routing_strategy: simple-shuffle
+        num_retries: 2
+        # With one deployment per group, the router backs off before each
+        # retry of the same failing provider and only then falls back. Measured
+        # with mock-openai failing 80% of calls: p95 6.5s with blanket retries.
+        # Send 5xx straight to the fallback and keep retries for errors that
+        # are worth waiting out.
+        retry_policy:
+          InternalServerErrorRetries: 0
+          ServiceUnavailableErrorRetries: 0
+          TimeoutErrorRetries: 1
+          RateLimitErrorRetries: 2
+        timeout: 30
+        allowed_fails: 3
+        cooldown_time: 30
+        fallbacks:
+          - gpt-mock: ["claude-mock"]
+      litellm_settings:
+        callbacks: ["prometheus"]
+        prometheus_initialize_budget_metrics: true
+        drop_params: true
+        request_timeout: 60
+      general_settings:
+        master_key: os.environ/LITELLM_MASTER_KEY
+        store_model_in_db: false
+  metricsServer:
+    enabled: true
+  serviceMonitor:
+    enabled: true
+  hpa:
+    enabled: true
+    # Python workers rarely hand memory back, so a memory target only ever
+    # scales up. Scale on CPU plus request rate instead.
+    targetMemoryUtilizationPercentage: null
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  startupProbe:
+    httpGet: { path: /health/liveliness, port: http }
+    periodSeconds: 5
+    failureThreshold: 36
+  # Give the Service endpoints time to drop the pod before uvicorn stops
+  # accepting connections, so a rollout does not cut in-flight requests.
+  lifecycle:
+    preStop:
+      sleep:
+        seconds: 5
+  terminationGracePeriodSeconds: 45
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: gateway
+
+backend:
+  logLevel: INFO
+  # The chart already mounts the gateway's proxy_config here, so the
+  # management API and the Admin UI see the same model list.
+  envSecrets:
+    - litellm-env
+  hpa:
+    enabled: false
+  startupProbe:
+    httpGet: { path: /health/liveliness, port: http }
+    periodSeconds: 5
+    failureThreshold: 36
+  lifecycle:
+    preStop:
+      sleep:
+        seconds: 5
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+ui:
+  # Without this, a rollout returned 502s through Traefik for a few seconds:
+  # the old pod stopped before Traefik dropped its endpoint.
+  lifecycle:
+    preStop:
+      sleep:
+        seconds: 5
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  volumes:
+    - name: tmp
+      emptyDir: {}
+  volumeMounts:
+    - name: tmp
+      mountPath: /tmp

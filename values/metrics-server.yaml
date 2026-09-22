@@ -1,0 +1,8 @@
+# kind's kubelets serve self-signed certs. Real clusters (EKS/GKE/AKS) ship
+# metrics-server already and do not need this flag.
+args:
+  - --kubelet-insecure-tls
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
