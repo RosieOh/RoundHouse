@@ -1,0 +1,139 @@
+environments:
+  local:
+    values:
+      - environments/local.yaml
+---
+repositories:
+  - name: traefik
+    url: https://traefik.github.io/charts
+  - name: metrics-server
+    url: https://kubernetes-sigs.github.io/metrics-server/
+  - name: cnpg
+    url: https://cloudnative-pg.github.io/charts
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+  - name: valkey
+    url: https://valkey.io/valkey-helm/
+
+helmDefaults:
+  kubeContext: {{ .Values.kubeContext }}
+  wait: true
+  timeout: 600
+  createNamespace: true
+
+releases:
+  # ---------- cluster add-ons ----------
+  - name: metrics-server
+    namespace: kube-system
+    chart: metrics-server/metrics-server
+    version: 3.14.0
+    values:
+      - values/metrics-server.yaml
+
+  - name: kube-prometheus-stack
+    namespace: monitoring
+    chart: prometheus-community/kube-prometheus-stack
+    version: 91.4.1
+    values:
+      - values/kube-prometheus-stack.yaml
+
+  - name: prometheus-adapter
+    namespace: monitoring
+    chart: prometheus-community/prometheus-adapter
+    version: 5.3.0
+    needs:
+      - monitoring/kube-prometheus-stack
+    values:
+      - values/prometheus-adapter.yaml
+
+  - name: traefik
+    namespace: traefik
+    chart: traefik/traefik
+    version: 41.6.0
+    needs:
+      - monitoring/kube-prometheus-stack
+    values:
+      - values/traefik.yaml
+
+  - name: cnpg
+    namespace: cnpg-system
+    chart: cnpg/cloudnative-pg
+    version: 0.29.0
+    needs:
+      - monitoring/kube-prometheus-stack
+    values:
+      - values/cnpg.yaml
+
+  # ---------- LiteLLM data plane dependencies ----------
+  - name: litellm-data
+    namespace: litellm
+    chart: ./charts/litellm-data
+    needs:
+      - cnpg-system/cnpg
+    hooks:
+      # helm --wait does not understand the CNPG Cluster resource, so block
+      # here until the primary accepts connections; otherwise the LiteLLM
+      # migration hook starts against a database that does not exist yet.
+      - events: ["postsync"]
+        showlogs: true
+        command: kubectl
+        args:
+          - --context={{ .Values.kubeContext }}
+          - --namespace=litellm
+          - wait
+          - --for=condition=Ready
+          - cluster/litellm-pg
+          - --timeout=600s
+
+  - name: valkey
+    namespace: litellm
+    chart: valkey/valkey
+    version: 0.12.0
+    needs:
+      - monitoring/kube-prometheus-stack
+    values:
+      - values/valkey.yaml
+
+  - name: mock-llm
+    namespace: llm-mocks
+    chart: ./charts/mock-llm
+
+  # ---------- LiteLLM ----------
+  - name: litellm
+    namespace: litellm
+    chart: {{ env "LITELLM_CHART_DIR" | default (printf ".cache/charts/litellm-%s" .Values.litellm.version) }}
+    timeout: 900
+    needs:
+      - litellm/litellm-data
+      - litellm/valkey
+      - llm-mocks/mock-llm
+      - monitoring/prometheus-adapter
+      - traefik/traefik
+    values:
+      - values/litellm/common.yaml
+      - values/litellm/{{ .Environment.Name }}.yaml
+      - migrationJob:
+          image:
+            tag: {{ .Values.litellm.version }}
+        gateway:
+          image:
+            tag: {{ .Values.litellm.version }}
+        backend:
+          image:
+            tag: {{ .Values.litellm.version }}
+        ui:
+          image:
+            tag: {{ .Values.litellm.version }}
+
+  - name: litellm-edge
+    namespace: litellm
+    chart: ./charts/litellm-edge
+    needs:
+      - traefik/traefik
+
+  # ---------- observability ----------
+  - name: litellm-observability
+    namespace: monitoring
+    chart: ./charts/litellm-observability
+    needs:
+      - monitoring/kube-prometheus-stack

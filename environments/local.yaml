@@ -1,0 +1,8 @@
+# Every release refuses to run against any other context, so a stray
+# `make deploy` can never land on a shared cluster.
+kubeContext: kind-llm-roundhouse
+
+litellm:
+  # One tag drives the vendored chart (git tag in BerriAI/litellm) and all
+  # four component images (gateway, backend, ui, migrations).
+  version: v1.102.0
