@@ -201,6 +201,24 @@ LITELLM_CHART_DIR=../litellm/helm/litellm make deploy
 
 두 번째 방법이 이 저장소의 목적 중 하나입니다. upstream에 차트 PR을 보내기 전에, 실제 스택에서 먼저 검증할 수 있습니다.
 
+## 차트 패키지
+
+이 저장소의 차트 4개는 GHCR에 OCI 패키지로 올라가 있어서 clone 없이 설치할 수 있습니다.
+
+```bash
+helm show chart oci://ghcr.io/rosieoh/roundhouse/mock-llm --version 0.1.0
+helm install mock-llm oci://ghcr.io/rosieoh/roundhouse/mock-llm --version 0.1.0 -n llm-mocks --create-namespace
+```
+
+| 차트 | 내용 |
+|---|---|
+| `litellm-data` | CloudNativePG Postgres(primary와 streaming replica, rw/ro Service, PodMonitor) |
+| `litellm-edge` | LiteLLM 차트의 Ingress로 표현할 수 없는 Traefik 라우트 |
+| `litellm-observability` | SLO recording rule, 알림, Grafana 대시보드 |
+| `mock-llm` | 지연과 장애를 주입할 수 있는 OpenAI 호환 mock provider |
+
+게시는 `helm registry login ghcr.io` 후 `make publish-charts`로 합니다. 같은 버전을 다시 push하면 덮어쓰므로, 바꿀 때마다 `Chart.yaml`의 `version`을 올립니다.
+
 ## Make 타깃
 
 ```text
@@ -214,6 +232,7 @@ make chaos-slow           지연 주입(LATENCY_MS)
 make chaos-off            선언된 상태로 복구
 make status / urls        상태 / 접속 정보
 make validate             helm lint, promtool, 렌더링 검사
+make publish-charts       차트를 GHCR OCI 패키지로 게시
 ```
 
 ## 운영 환경으로 가져갈 때

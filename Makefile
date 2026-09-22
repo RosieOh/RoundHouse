@@ -64,6 +64,10 @@ validate: chart ## Lint charts, check alert rules, render every release
 	  quay.io/prometheus/prometheus:v3.7.0 check rules /rules/litellm.yaml >/dev/null && echo "  ok    promtool check rules"
 	@helmfile -e $(ENV) template --skip-deps >/dev/null 2>&1 && echo "  ok    helmfile template (all releases render)"
 
+.PHONY: publish-charts
+publish-charts: ## Push every chart to GHCR as an OCI artifact (helm registry login ghcr.io first)
+	@./scripts/publish-charts.sh
+
 .PHONY: status
 status: ## Pods, HPA and CNPG cluster state
 	@$(KUBECTL) get pods -A -o wide --sort-by=.metadata.namespace | grep -v -E "kube-system|local-path-storage"
