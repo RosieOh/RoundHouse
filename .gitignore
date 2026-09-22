@@ -1,0 +1,3 @@
+# Vendored upstream charts (scripts/fetch-litellm-chart.sh)
+.cache/
+__pycache__/

@@ -1,0 +1,25 @@
+# Single node on purpose: Docker Desktop defaults to ~8 GiB, and every extra
+# kind node costs a kubelet + containerd. Production topology (multi-AZ node
+# pools, PDBs, topology spread) is covered by values/*/prod.yaml instead.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: llm-roundhouse
+nodes:
+  - role: control-plane
+    labels:
+      ingress-ready: "true"
+    extraPortMappings:
+      # Traefik "web" entrypoint, exposed as NodePort 30080 (values/traefik.yaml)
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: 127.0.0.1
+        protocol: TCP
+      # Grafana and Prometheus NodePorts (values/kube-prometheus-stack.yaml)
+      - containerPort: 30300
+        hostPort: 3000
+        listenAddress: 127.0.0.1
+        protocol: TCP
+      - containerPort: 30090
+        hostPort: 9090
+        listenAddress: 127.0.0.1
+        protocol: TCP
