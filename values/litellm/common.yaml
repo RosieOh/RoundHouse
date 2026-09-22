@@ -130,6 +130,14 @@ gateway:
       general_settings:
         master_key: os.environ/LITELLM_MASTER_KEY
         store_model_in_db: false
+        # With only the REDIS_* env vars the proxy pings Valkey once at boot, and if
+        # Valkey is not ready yet it keeps budgets and cache invalidation per pod for
+        # the life of the pod. An explicit block skips that probe, so cross-pod
+        # coordination comes up whenever Valkey does.
+        coordination_redis:
+          host: os.environ/REDIS_HOST
+          port: os.environ/REDIS_PORT
+          password: os.environ/REDIS_PASSWORD
   metricsServer:
     enabled: true
   serviceMonitor:
