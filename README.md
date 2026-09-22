@@ -253,7 +253,9 @@ make publish-charts       차트를 GHCR OCI 패키지로 게시
 
 | 기여 | 결과 | 상태 |
 |---|---|---|
-| LiteLLM 라우터: 단일 deployment 그룹이 fallback 전에 재시도 백오프를 기다림 | provider 장애 시 fallback 응답 중앙값 5.48초 → 0.73초 | PR [#42450](https://github.com/BerriAI/litellm/pull/42450) 리뷰 대기 |
+| LiteLLM 라우터: 단일 deployment 그룹이 fallback 전에 재시도 백오프를 기다림 | provider 장애 시 fallback 응답 중앙값 5.53초 → 0.84초 | PR [#42450](https://github.com/BerriAI/litellm/pull/42450) 리뷰 대기(CI 통과, Greptile 5/5) |
+
+발견부터 원인 추적, 설계 선택, 검증, 리뷰 대응까지의 과정은 [케이스 스터디](docs/case-study-litellm-router.md)에 한 페이지로 정리했습니다.
 
 ## 로드맵
 
