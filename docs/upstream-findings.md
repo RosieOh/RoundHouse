@@ -82,14 +82,14 @@ $ curl -sI localhost:8080/models-and-endpoints/index.txt | grep -i server -> uvi
 
 **진행 (2026-09-22)**: 같은 증상이 #40405로 이미 보고돼 있어서, 새 이슈 대신 그 이슈에 재현 결과를 코멘트로 남기고 수정 PR [#42450](https://github.com/BerriAI/litellm/pull/42450)을 보냈습니다. 이력을 보면 2024-05-11 `3e6097d9f8`에서 fallback이 있으면 즉시 재시도하는 코드가 들어갔다가, 한 시간 뒤 `4d648a6d89`에서 빠졌습니다. 당시 코드는 라우터 전체 fallback 목록만 확인했습니다. 그래서 PR은 이 요청에서 실제로 쓸 수 있는 fallback이 있을 때만 대기를 건너뛰도록 범위를 좁혔고, fallback dispatcher와 같은 판정 로직을 재사용합니다
 
-PR 증거는 기본 모델을 항상 500을 반환하는 로컬 서버로, fallback을 실제 OpenAI `gpt-5.4-mini`로 두고 요청 10건씩 측정했습니다
+PR 증거는 기본 모델을 항상 500을 반환하는 로컬 서버로, fallback을 실제 OpenAI `gpt-5.4-mini`로 두고 요청 10건씩 측정했습니다. 수정 전은 merge base(`1a714548a4`), 수정 후는 PR tip(`f1fef4d13f`)입니다
 
-| | 응답 시간 | 중앙값 | 장애 provider가 받은 시도 |
+| 케이스 | 수정 전 중앙값 | 수정 후 중앙값 | 장애 provider가 받은 시도 |
 |---|---|---|---|
-| 수정 전(`25af172b85`) | 4.85~6.21초 | 5.48초 | 30회 |
-| 수정 후 | 0.57~1.50초 | 0.73초 | 30회 |
+| 라우터 설정의 fallback | 5.53초 | 0.84초 | 양쪽 모두 30회 |
+| 요청에 담긴 fallback | 5.42초 | 0.73초 | 양쪽 모두 30회 |
 
-재시도 횟수는 그대로이고 대기만 사라집니다. 장애 난 provider에 가는 요청 자체를 줄이려면 여전히 `allowed_fails`와 `cooldown_time`이 필요합니다. 재시도 루프가 마지막 재시도가 실패한 뒤에도 백오프만큼 잠드는 문제는 [#30](https://github.com/RosieOh/RoundHouse/issues/30)에서 따로 추적합니다
+재시도 횟수는 그대로이고 대기만 사라집니다. 장애 난 provider에 가는 요청 자체를 줄이려면 여전히 `allowed_fails`와 `cooldown_time`이 필요합니다. 전체 과정과 리뷰 대응은 [케이스 스터디](case-study-litellm-router.md)에 정리했습니다. 재시도 루프가 마지막 재시도가 실패한 뒤에도 백오프만큼 잠드는 문제는 [#30](https://github.com/RosieOh/RoundHouse/issues/30)에서 따로 추적합니다
 
 ## 6. metrics: `litellm_deployment_state` is last-write-wins
 
