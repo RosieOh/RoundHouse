@@ -4,3 +4,6 @@ description: LiteLLM's Postgres, run by the CloudNativePG operator (primary + st
 type: application
 version: 0.1.0
 appVersion: "17.11"
+home: https://github.com/RosieOh/RoundHouse
+sources:
+  - https://github.com/RosieOh/RoundHouse

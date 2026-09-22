@@ -3,3 +3,6 @@ name: litellm-observability
 description: SLO recording rules, alerts and the Grafana dashboard for a LiteLLM gateway scraped by the Prometheus Operator
 type: application
 version: 0.1.0
+home: https://github.com/RosieOh/RoundHouse
+sources:
+  - https://github.com/RosieOh/RoundHouse
