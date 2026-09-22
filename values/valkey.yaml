@@ -1,0 +1,31 @@
+# Coordination store for the gateway: cross-pod rpm/tpm limits, spend buffers
+# and the pod lock manager. Losing it degrades limits to per-pod, so a managed
+# Redis/Valkey with a replica is the production answer; one node is enough
+# locally.
+auth:
+  enabled: true
+  usersExistingSecret: valkey-users
+  aclUsers:
+    default:
+      permissions: "~* &* +@all"
+      passwordKey: password
+dataStorage:
+  enabled: false
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    memory: 256Mi
+metrics:
+  enabled: true
+  exporter:
+    # The chart leaves the exporter unhardened, which the namespace's
+    # restricted Pod Security Standard rejects.
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      capabilities:
+        drop: ["ALL"]
+  serviceMonitor:
+    enabled: true

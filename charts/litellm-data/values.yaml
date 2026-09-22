@@ -1,0 +1,24 @@
+postgres:
+  # CNPG creates `<name>-rw` (writer), `<name>-ro` (replicas only) Services and
+  # a `<name>-app` Secret (username/password/uri) for the application owner.
+  name: litellm-pg
+  instances: 2
+  # Pin the major and minor. CNPG rolls replicas first, then switches over the
+  # primary, when this changes; a major bump needs an explicit upgrade plan.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11-minimal-trixie
+  database: litellm
+  owner: litellm
+  storage:
+    size: 2Gi
+    storageClass: ""
+  parameters:
+    max_connections: "200"
+    shared_buffers: 128MB
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  podMonitor:
+    enabled: true

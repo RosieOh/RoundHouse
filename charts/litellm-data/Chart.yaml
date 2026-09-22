@@ -1,0 +1,6 @@
+apiVersion: v2
+name: litellm-data
+description: LiteLLM's Postgres, run by the CloudNativePG operator (primary + streaming replica, rw/ro Services, PodMonitor)
+type: application
+version: 0.1.0
+appVersion: "17.11"
