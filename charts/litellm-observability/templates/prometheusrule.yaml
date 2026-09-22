@@ -1,0 +1,8 @@
+{{- if .Values.rules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}
+spec:
+{{ .Files.Get "rules/litellm.yaml" | indent 2 }}
+{{- end }}

@@ -1,0 +1,227 @@
+# Plain Prometheus rule groups (not Helm-templated) so `promtool check rules`
+# and `promtool test rules` run on this file directly.
+#
+# SLOs cover what the gateway controls. Provider latency and provider errors
+# are tracked, but an upstream incident the router absorbs through retries
+# and fallbacks is a warning, not a page.
+groups:
+  - name: litellm.recording
+    interval: 30s
+    rules:
+      - record: litellm:requests:rate5m
+        expr: sum by (namespace, requested_model) (rate(litellm_proxy_total_requests_metric_total[5m]))
+      - record: litellm:requests_5xx:rate5m
+        expr: sum by (namespace, requested_model) (rate(litellm_proxy_total_requests_metric_total{status_code=~"5.."}[5m]))
+      # Availability SLI: share of requests answered with 5xx. 4xx is the
+      # gateway working as intended (bad key, budget or rate limit exceeded).
+      - record: litellm:error_ratio:rate5m
+        expr: |
+          sum by (namespace) (rate(litellm_proxy_total_requests_metric_total{status_code=~"5.."}[5m]))
+          / sum by (namespace) (rate(litellm_proxy_total_requests_metric_total[5m]))
+      - record: litellm:error_ratio:rate30m
+        expr: |
+          sum by (namespace) (rate(litellm_proxy_total_requests_metric_total{status_code=~"5.."}[30m]))
+          / sum by (namespace) (rate(litellm_proxy_total_requests_metric_total[30m]))
+      - record: litellm:error_ratio:rate1h
+        expr: |
+          sum by (namespace) (rate(litellm_proxy_total_requests_metric_total{status_code=~"5.."}[1h]))
+          / sum by (namespace) (rate(litellm_proxy_total_requests_metric_total[1h]))
+      - record: litellm:error_ratio:rate6h
+        expr: |
+          sum by (namespace) (rate(litellm_proxy_total_requests_metric_total{status_code=~"5.."}[6h]))
+          / sum by (namespace) (rate(litellm_proxy_total_requests_metric_total[6h]))
+      - record: litellm:overhead_latency_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (namespace, le) (rate(litellm_overhead_latency_metric_bucket[5m])))
+      - record: litellm:request_latency_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (namespace, requested_model, le) (rate(litellm_request_total_latency_metric_bucket[5m])))
+      - record: litellm:llm_api_latency_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (namespace, model_id, le) (rate(litellm_llm_api_latency_metric_bucket[5m])))
+      - record: litellm:time_to_first_token_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (namespace, requested_model, le) (rate(litellm_llm_api_time_to_first_token_metric_bucket[5m])))
+      - record: litellm:tokens:rate5m
+        expr: sum by (namespace, requested_model) (rate(litellm_total_tokens_metric_total[5m]))
+      - record: litellm:spend_usd:increase1h
+        expr: sum by (namespace, team_alias) (increase(litellm_spend_metric_total[1h]))
+      # `pid` comes from the multiprocess collector; health is per deployment.
+      - record: litellm:deployment_state:max
+        expr: max by (namespace, model_id, litellm_model_name, api_base) (litellm_deployment_state)
+      # litellm_deployment_state is last-write-wins: every success resets it to
+      # healthy, so a deployment failing 70% of calls still reads 0 most of the
+      # time. Alert on the failure ratio over a window instead.
+      - record: litellm:deployment_failure_ratio:rate5m
+        expr: |
+          sum by (namespace, model_id) (rate(litellm_deployment_failure_responses_total[5m]))
+          / sum by (namespace, model_id) (rate(litellm_deployment_total_requests_total[5m]))
+
+  - name: litellm.slo
+    rules:
+      # 99.5% availability over 30 days -> 0.5% error budget. Multi-window
+      # burn rates from the Google SRE workbook: page when 2% of the monthly
+      # budget burns in an hour, ticket when 5% burns in six hours.
+      - alert: LiteLLMErrorBudgetBurnFast
+        expr: |
+          litellm:error_ratio:rate1h > (14.4 * 0.005)
+          and litellm:error_ratio:rate5m > (14.4 * 0.005)
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: LiteLLM is burning its availability error budget 14x too fast
+          description: >-
+            {{ $value | humanizePercentage }} of requests in {{ $labels.namespace }} returned 5xx over the last
+            hour. At this rate the 30-day budget is gone in about two days.
+      - alert: LiteLLMErrorBudgetBurnSlow
+        expr: |
+          litellm:error_ratio:rate6h > (6 * 0.005)
+          and litellm:error_ratio:rate30m > (6 * 0.005)
+        for: 15m
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: LiteLLM is burning its availability error budget 6x too fast
+          description: >-
+            {{ $value | humanizePercentage }} of requests in {{ $labels.namespace }} returned 5xx over the last
+            six hours.
+
+  - name: litellm.routing
+    rules:
+      - alert: LiteLLMDeploymentDegraded
+        expr: litellm:deployment_failure_ratio:rate5m > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LiteLLM deployment {{ $labels.model_id }} fails {{ $value | humanizePercentage }} of calls"
+          description: >-
+            The router retries and falls back, so clients may not notice yet, but latency and cost now
+            include the retries. Check the provider status and LiteLLMServingFromFallbacks.
+      - alert: LiteLLMDeploymentDown
+        expr: litellm:deployment_failure_ratio:rate5m > 0.95
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LiteLLM deployment {{ $labels.model_id }} fails nearly every call"
+          description: >-
+            Traffic for this deployment only succeeds through other deployments of its group or its
+            fallbacks. It pages only if those fail too (LiteLLMFallbacksFailing, error budget burn).
+      - alert: LiteLLMServingFromFallbacks
+        expr: sum by (namespace, requested_model) (rate(litellm_deployment_successful_fallbacks_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.requested_model }} traffic is being served by its fallback"
+          description: >-
+            {{ $value | humanize }} req/s for {{ $labels.requested_model }} succeed only after falling back.
+            Clients are fine, but cost and latency now follow the fallback model.
+      - alert: LiteLLMFallbacksFailing
+        expr: sum by (namespace, requested_model) (rate(litellm_deployment_failed_fallbacks_total[5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fallbacks for {{ $labels.requested_model }} are failing too"
+          description: Both the primary deployment and its fallback chain are failing, so clients see errors.
+
+  - name: litellm.latency
+    rules:
+      - alert: LiteLLMGatewayOverheadHigh
+        expr: litellm:overhead_latency_seconds:p95_5m > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: LiteLLM adds more than 250ms p95 on top of provider latency
+          description: >-
+            Gateway overhead p95 is {{ $value | humanizeDuration }} in {{ $labels.namespace }}. Usually CPU
+            saturation, a slow database or Redis, or synchronous callbacks; check pod CPU and queue time.
+      - alert: LiteLLMRequestQueueing
+        expr: histogram_quantile(0.95, sum by (namespace, le) (rate(litellm_request_queue_time_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Requests wait more than 1s p95 before LiteLLM starts them
+          description: The gateway is short of capacity. Check HPA headroom (LiteLLMGatewayAtMaxReplicas).
+      - alert: LiteLLMProviderLatencyHigh
+        expr: litellm:llm_api_latency_seconds:p95_5m > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Provider latency for {{ $labels.model_id }} is above 20s p95"
+          description: The upstream provider is slow. Consider lowering its weight or timeout, or shifting traffic.
+
+  - name: litellm.cost
+    rules:
+      - alert: LiteLLMTeamBudgetNearlyExhausted
+        expr: |
+          (max by (namespace, team, team_alias) (litellm_remaining_team_budget_metric)
+            / max by (namespace, team, team_alias) (litellm_team_max_budget_metric)) < 0.1
+          and max by (namespace, team, team_alias) (litellm_team_max_budget_metric) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Team {{ $labels.team_alias }} has less than 10% of its budget left"
+          description: Requests from this team start failing with budget errors once it reaches zero.
+      - alert: LiteLLMZeroCostBillableRequests
+        expr: sum by (namespace) (increase(litellm_zero_cost_requests_total[15m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: LiteLLM priced billable requests at $0
+          description: >-
+            {{ $value | humanize }} billable requests were priced at $0 in the last 15 minutes, so spend and
+            budgets under-count. Usually a model missing from the cost map or a missing model_info price.
+
+  - name: litellm.platform
+    rules:
+      - alert: LiteLLMGatewayMetricsDown
+        expr: absent(up{job="litellm-gateway-metrics"} == 1)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: No LiteLLM gateway pod is being scraped
+          description: Either the gateway is down or its metrics sidecar is. Every other LiteLLM alert is blind meanwhile.
+      - alert: LiteLLMGatewayAtMaxReplicas
+        expr: |
+          max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="litellm-gateway"})
+          >= max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler="litellm-gateway"})
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: The LiteLLM gateway HPA has been at maxReplicas for 15 minutes
+          description: The gateway cannot scale further; raise gateway.hpa.maxReplicas or add node capacity.
+      - alert: LiteLLMRedisCircuitOpen
+        expr: max by (namespace) (litellm_redis_circuit_breaker_state{state="open"}) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: LiteLLM stopped talking to Redis
+          description: >-
+            The Redis circuit breaker is open, so rate limits and spend buffering fall back to per-pod state.
+            Limits are no longer enforced across replicas.
+      - alert: LiteLLMCallbackLoggingFailures
+        expr: sum by (namespace, callback_name) (rate(litellm_callback_logging_failures_metric_total[5m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LiteLLM callback {{ $labels.callback_name }} is failing"
+          description: Logs, traces or spend events for this callback are being dropped.
+      - alert: LiteLLMPostgresReplicationLag
+        expr: max by (namespace, pod) (cnpg_pg_replication_lag) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres replica {{ $labels.pod }} is {{ $value | humanizeDuration }} behind"
+          description: Reads routed to litellm-pg-ro (key and spend lookups) return stale data.

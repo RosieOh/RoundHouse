@@ -1,0 +1,6 @@
+rules:
+  enabled: true
+dashboards:
+  enabled: true
+  # Grafana sidecar folder (kube-prometheus-stack: sidecar.dashboards.folderAnnotation)
+  folder: LiteLLM
