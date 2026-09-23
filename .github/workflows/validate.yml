@@ -1,0 +1,41 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v4.3.0
+  HELMFILE_VERSION: 1.8.0
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      # Pinned and checksum verified: a release asset can be replaced, and CI
+      # must fail loudly rather than run whatever is behind the tag today.
+      - name: Install helmfile
+        run: |
+          set -euo pipefail
+          base="https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}"
+          curl -fsSLo helmfile.tar.gz "${base}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLo checksums.txt "${base}/helmfile_${HELMFILE_VERSION}_checksums.txt"
+          grep " helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz\$" checksums.txt | sed "s/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz/helmfile.tar.gz/" | sha256sum --check -
+          tar -xzf helmfile.tar.gz helmfile
+          sudo install helmfile /usr/local/bin/helmfile
+          helmfile --version
+
+      # Vendors the LiteLLM chart from its git tag, lints the local charts,
+      # checks the alert rules with promtool, and renders every release.
+      - name: make validate
+        run: make validate
