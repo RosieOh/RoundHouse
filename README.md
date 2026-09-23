@@ -269,7 +269,11 @@ make publish-charts       차트를 GHCR OCI 패키지로 게시
 
 | 기여 | 결과 | 상태 |
 |---|---|---|
-| LiteLLM 라우터: 단일 deployment 그룹이 fallback 전에 재시도 백오프를 기다림 | provider 장애 시 fallback 응답 중앙값 5.53초 → 0.84초 | PR [#42450](https://github.com/BerriAI/litellm/pull/42450) 리뷰 대기(CI 통과, Greptile 5/5) |
+| [LiteLLM #42450](https://github.com/BerriAI/litellm/pull/42450) 라우터가 fallback 전에 재시도 백오프를 기다림 | provider 장애 시 fallback 응답 중앙값 5.53초 → 0.84초 | PR 리뷰 대기(검사 89개 통과, Greptile 5/5) |
+| [LiteLLM #42653](https://github.com/BerriAI/litellm/issues/42653) 조정용 Redis를 기동 시 한 번만 확인해서, 경합 뒤에는 예산이 파드 수만큼 곱해짐 | 파드 3개에서 예산의 3.86배 사용을 측정 | 이슈 보고, 분류 대기 |
+| [valkey-helm #250](https://github.com/valkey-io/valkey-helm/pull/250) exporter 사이드카의 기본 securityContext | restricted PSS 네임스페이스에서 파드가 거부되지 않음 | PR 리뷰 대기(검사 통과) |
+
+이 밖에 LiteLLM에 검증 리뷰와 트리아지 코멘트 4건을 남겼습니다. UI RSC 404 수정 PR 검증(404 39건 → 0건), 멀티 파드 예산 우회 이슈의 재현 결과, componentized 이미지 배포 확인, 라벨 정정 요청입니다.
 
 발견부터 원인 추적, 설계 선택, 검증, 리뷰 대응까지의 과정은 [케이스 스터디](docs/case-study-litellm-router.md)에 한 페이지로 정리했습니다.
 
