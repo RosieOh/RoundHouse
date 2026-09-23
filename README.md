@@ -54,7 +54,7 @@ flowchart LR
 |---|---|---|
 | LiteLLM componentized chart `v1.102.0` | gateway(데이터 플레인), backend(관리 API), ui 분리 배포 | 컴포넌트별 스케일링, pre-upgrade 마이그레이션 hook, 메트릭 사이드카, 커스텀 메트릭 HPA를 지원합니다. 레거시 `litellm-helm` 차트는 마이그레이션 경쟁 조건(#36938)이 있습니다 |
 | CloudNativePG `1.30` + PostgreSQL `17.11` | primary + streaming replica, rw/ro Service | Bitnami 이미지가 유료화된 뒤로 레거시 차트의 번들 DB를 쓰기 어렵습니다. CNPG는 페일오버, 백업, PodMonitor를 오퍼레이터가 관리합니다 |
-| Valkey `9.1` (공식 차트) | 파드 간 rpm/tpm 한도, spend 버퍼, pod lock | Redis 호환 오픈소스이고 ACL 인증을 씁니다 |
+| Valkey `9.1` (공식 차트) | 파드 간 rpm/tpm 한도, spend 버퍼, pod lock | Redis 호환 오픈소스이고 ACL 인증을 씁니다. 공유가 실제로 되는지는 측정했습니다(아래) |
 | Traefik `v3.7` | Ingress | ingress-nginx는 2026년 3월에 은퇴했습니다 |
 | kube-prometheus-stack, prometheus-adapter, metrics-server | 수집, 대시보드, 알림, 커스텀 메트릭 HPA | 사실상 표준 스택입니다 |
 | mock-llm (이 저장소) | OpenAI 호환 가짜 provider 2개, 지연과 에러 주입 | 비용 없이 재시도, fallback, 알림을 재현합니다 |
@@ -162,6 +162,21 @@ make chaos-off             # helmfile로 선언된 상태로 되돌림
 SLO는 gateway가 통제할 수 있는 것(자체 가용성과 overhead)만 다룹니다. provider 장애를 라우터가 흡수하고 있다면 warning이고, 클라이언트가 실제로 에러를 받을 때(`FallbacksFailing`, error budget burn)만 critical입니다.
 
 `litellm_deployment_state`는 알림 기준으로 쓰지 않습니다. 성공 요청 하나가 들어올 때마다 healthy(0)로 덮어써지는 게이지라서, 70%가 실패하는 deployment도 대부분의 시간에 0으로 보이기 때문입니다. 장애 실험에서 `for: 2m` 알림이 한 번도 발생하지 않는 것을 확인하고 실패율 기반으로 바꿨습니다.
+
+## 파드 간 공유 확인
+
+Valkey가 붙어 있다고 해서 한도가 공유된다는 보장은 없습니다. LiteLLM은 `REDIS_*` 환경변수만 있으면 기동할 때 한 번만 Redis를 확인하고, 그때 실패하면 그 파드는 계속 메모리 전용으로 돕니다([#45](https://github.com/RosieOh/RoundHouse/issues/45), upstream [#42653](https://github.com/BerriAI/litellm/issues/42653)). 그래서 주장 대신 측정을 남깁니다.
+
+gateway 2개, rpm 한도 2인 키로 요청 4건을 두 파드에 번갈아 보냈습니다.
+
+| 순서 | 파드 | 결과 |
+|---|---|---|
+| 1 | A | 200 |
+| 2 | B | 200 |
+| 3 | A | **429** |
+| 4 | B | **429** |
+
+파드마다 2건씩이 아니라 전체 2건에서 막혔습니다. 예산도 같은 방식으로 확인했습니다. 조정이 꺼진 상태에서는 파드 3개가 예산의 3.86배까지 썼고, 켜진 상태에서는 1.29배에서 멈췄습니다.
 
 ## 보안 기본값
 
