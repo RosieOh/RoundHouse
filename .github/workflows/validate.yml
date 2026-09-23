@@ -35,6 +35,11 @@ jobs:
           sudo install helmfile /usr/local/bin/helmfile
           helmfile --version
 
+      # `make validate` renders with --skip-deps, which also skips adding the
+      # chart repositories. A developer machine already has them from `make up`.
+      - name: Add chart repositories
+        run: helmfile -e local repos
+
       # Vendors the LiteLLM chart from its git tag, lints the local charts,
       # checks the alert rules with promtool, and renders every release.
       - name: make validate
