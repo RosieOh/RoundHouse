@@ -62,7 +62,7 @@ validate: chart ## Lint charts, check alert rules, render every release
 	@for c in charts/*/; do helm lint --quiet "$$c" >/dev/null && echo "  ok    helm lint $$c"; done
 	@docker run --rm -v "$(CURDIR)/charts/litellm-observability/rules:/rules:ro" --entrypoint promtool \
 	  quay.io/prometheus/prometheus:v3.7.0 check rules /rules/litellm.yaml >/dev/null && echo "  ok    promtool check rules"
-	@helmfile -e $(ENV) template --skip-deps >/dev/null 2>&1 && echo "  ok    helmfile template (all releases render)"
+	@out=$$(helmfile -e $(ENV) template --skip-deps 2>&1) || { echo "$$out" >&2; exit 1; }; echo "  ok    helmfile template (all releases render)"
 
 .PHONY: publish-charts
 publish-charts: ## Push every chart to GHCR as an OCI artifact (helm registry login ghcr.io first)
