@@ -242,6 +242,7 @@ make publish-charts       차트를 GHCR OCI 패키지로 게시
 - **사이징**: gateway와 backend는 차트 기본값(파드당 1 CPU / 4GiB)에서 시작하고, `numWorkers`를 늘릴 때 PgBouncer의 `maxDbConnections`를 함께 계산합니다
 - **데이터 계층**: CNPG에 object storage 백업(`barmanObjectStore`)과 PITR를 켜거나 RDS/Cloud SQL을 씁니다. Valkey는 복제본이 있는 매니지드 서비스로 바꿉니다
 - **Secret**: bootstrap 스크립트 대신 External Secrets Operator나 Vault를 씁니다
+- **파드 간 조정**: LiteLLM은 `REDIS_*` 환경변수만 있으면 기동할 때 Redis를 한 번만 확인하고, 그때 실패하면 그 파드는 계속 메모리 전용으로 돕니다. 예산이 파드 수만큼 곱해지므로, 이 저장소는 `general_settings.coordination_redis`를 명시해 기동 순서와 무관하게 했습니다([#45](https://github.com/RosieOh/RoundHouse/issues/45))
 - **토폴로지**: 멀티 AZ 노드 풀, `topologySpreadConstraints`를 zone 기준으로, `pdb.minAvailable`
 - **메트릭 카디널리티**: LiteLLM은 요청 카운터에 `client_ip`, `user_agent`, `hashed_api_key`를 기본으로 붙입니다. 키와 사용자가 많아지면 `litellm_settings.prometheus_exclude_labels`(v1.102.0부터)로 필요 없는 라벨을 빼세요
 - **알림 라우팅**: Alertmanager receiver(Slack, PagerDuty)를 연결하고 severity로 분기합니다
